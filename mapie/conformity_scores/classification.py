@@ -185,7 +185,7 @@ class BaseClassificationScore(BaseConformityScore, metaclass=ABCMeta):
 
         # Choice of the quantile
         self.quantiles_ = self.get_conformity_score_quantiles(
-            conformity_scores, alpha_np, estimator, **kwargs
+            conformity_scores, alpha_np, estimator, clip=(0.0, 1.0), **kwargs
         )
 
         # Build prediction sets

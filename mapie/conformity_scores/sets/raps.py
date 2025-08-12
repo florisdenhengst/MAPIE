@@ -7,14 +7,14 @@ from sklearn.utils import _safe_indexing
 from sklearn.utils.validation import _num_samples
 
 from mapie.conformity_scores.sets.aps import APSConformityScore
-from mapie.conformity_scores.sets.utils import get_true_label_position
+from mapie.conformity_scores.sets.utils import get_true_label_position, get_first_true_label_position, get_last_true_label_position, minimize_costs
 from mapie.estimator.classifier import EnsembleClassifier
 
 from mapie._machine_precision import EPSILON
 from mapie._typing import NDArray
 from mapie.metrics import classification_mean_width_score
 from mapie.utils import check_alpha_and_n_samples, compute_quantiles
-
+import functools
 
 class RAPSConformityScore(APSConformityScore):
     """
@@ -161,12 +161,67 @@ class RAPSConformityScore(APSConformityScore):
         self.n_samples_ = _num_samples(y_enc)
 
         return X, y, y_enc, sample_weight, groups
+    
+    
+    def get_hierarchical_conformity_scores(
+        self,
+        y: NDArray,
+        y_pred_proba: NDArray,
+        y_enc: Optional[NDArray] = None,
+        method: str = 'first',
+        costs: Optional[NDArray] = None,
+        clip: Optional[Tuple[float, float]] = None,
+        **kwargs
+    ) -> NDArray:
+        """
+        Get the conformity score.
+
+        Parameters
+        ----------
+        y: NDArray of shape (n_samples,)
+            Observed target values.
+
+        y_pred_proba: NDArray of shape (n_samples,)
+            Predicted target values.
+
+        y_enc: NDArray of shape (n_samples,)
+            Target values as normalized encodings.
+
+        method: 'first' or 'last'
+            To encode obtaining score for first or last true label.
+
+        Returns
+        -------
+        NDArray of shape (n_samples,)
+            Conformity scores.
+        """
+        if method == 'costs' and costs is None:
+            raise ValueError('Method cannot be costs without costs being set.')
+        # Compute y_pred and position on the RAPS validation dataset
+        if method == 'first':
+            get_label_position = get_first_true_label_position
+        elif method == 'last':
+            get_label_position = get_last_true_label_position
+        elif method == 'costs':
+            get_label_position = functools.partial(minimize_costs, costs)
+        else:
+            raise ValueError('Unknown method {}'.format(method))
+
+        y_single = get_label_position(
+            y_pred_proba, y
+        )
+        
+        conformity_scores = self.get_conformity_scores(
+            y_single, y_pred_proba, y_enc=y_single, clip=clip, **kwargs
+        )
+        return conformity_scores
 
     def get_conformity_scores(
         self,
         y: NDArray,
         y_pred: NDArray,
         y_enc: Optional[NDArray] = None,
+        clip: Optional[Tuple[float, float]] = (None, None),
         **kwargs
     ) -> NDArray:
         """
@@ -196,9 +251,11 @@ class RAPSConformityScore(APSConformityScore):
             self.y_pred_proba_raps, self.y_raps
         )
 
-        return super().get_conformity_scores(
+        conformity_scores = super().get_conformity_scores(
             y, y_pred, y_enc=y_enc, **kwargs
         )
+        if clip is not None and clip != (None, None):
+            conformity_scores = np.clip(conformity_scores, clip[0], clip[1])
 
     @staticmethod
     def _regularize_conformity_score(

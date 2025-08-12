@@ -1,15 +1,17 @@
-from typing import Optional, cast
+from typing import Optional, cast, Dict, Tuple
 
 import numpy as np
+import scipy
 
 from mapie.conformity_scores.classification import BaseClassificationScore
-from mapie.conformity_scores.sets.utils import check_proba_normalized
+from mapie.conformity_scores.sets.utils import check_proba_normalized, get_first_true_label_position, get_last_true_label_position, minimize_costs
+
 from mapie.estimator.classifier import EnsembleClassifier
 
 from mapie._machine_precision import EPSILON
 from mapie._typing import NDArray
 from mapie.utils import compute_quantiles
-
+import functools
 
 class LACConformityScore(BaseClassificationScore):
     """
@@ -40,11 +42,66 @@ class LACConformityScore(BaseClassificationScore):
     def __init__(self) -> None:
         super().__init__()
 
+    
+    def get_hierarchical_conformity_scores(
+        self,
+        y: NDArray,
+        y_pred_proba: NDArray,
+        y_enc: Optional[NDArray] = None,
+        method: str = 'first',
+        costs: Optional[NDArray] = None,
+        clip: Optional[Tuple[float, float]] = None,
+        **kwargs
+    ) -> NDArray:
+        """
+        Get the conformity score.
+
+        Parameters
+        ----------
+        y: NDArray of shape (n_samples,)
+            Observed target values.
+
+        y_pred_proba: NDArray of shape (n_samples,)
+            Predicted target values.
+
+        y_enc: NDArray of shape (n_samples,)
+            Target values as normalized encodings.
+
+        method: 'first' or 'last'
+            To encode obtaining score for first or last true label.
+
+        Returns
+        -------
+        NDArray of shape (n_samples,)
+            Conformity scores.
+        """
+        if method == 'costs' and costs is None:
+            raise ValueError('Method cannot be costs without costs being set.')
+        # Compute y_pred and position on the RAPS validation dataset
+        if method == 'first':
+            get_label_position = get_first_true_label_position
+        elif method == 'last':
+            get_label_position = get_last_true_label_position
+        elif method == 'costs':
+            get_label_position = functools.partial(minimize_costs, costs)
+        else:
+            raise ValueError('Unknown method {}'.format(method))
+
+        y_single = get_label_position(
+            y_pred_proba, y
+        )
+        
+        conformity_scores = self.get_conformity_scores(
+            y_single, y_pred_proba, y_enc=y_single, clip=clip, **kwargs
+        )
+        return conformity_scores
+
     def get_conformity_scores(
         self,
         y: NDArray,
         y_pred: NDArray,
         y_enc: Optional[NDArray] = None,
+        clip = (None, None),
         **kwargs
     ) -> NDArray:
         """
@@ -73,6 +130,8 @@ class LACConformityScore(BaseClassificationScore):
         conformity_scores = np.take_along_axis(
             1 - y_pred, y_enc.reshape(-1, 1), axis=1
         )
+        if clip is not None and clip != (None, None):
+            conformity_scores = np.clip(conformity_scores, clip[0], clip[1])
 
         return conformity_scores
 
@@ -112,7 +171,7 @@ class LACConformityScore(BaseClassificationScore):
             Array of predictions.
         """
         y_pred_proba = estimator.predict(X, agg_scores)
-        y_pred_proba = check_proba_normalized(y_pred_proba, axis=1)
+        # y_pred_proba = check_proba_normalized(y_pred_proba, axis=1)
         if agg_scores != "crossval":
             y_pred_proba = np.repeat(
                 y_pred_proba[:, :, np.newaxis], len(alpha_np), axis=2

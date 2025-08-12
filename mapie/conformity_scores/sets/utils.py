@@ -1,9 +1,87 @@
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 import numpy as np
 
 from mapie._typing import NDArray
 from mapie._machine_precision import EPSILON
+import functools
 
+@functools.cache
+def cost_dict_to_array(
+    costs: Dict[int, float],
+):
+    return np.array([costs[i] for i in range(len(costs))])
+    
+
+def minimize_costs(
+    costs: NDArray,
+    y_pred_proba: NDArray,
+    y: NDArray,
+):
+    broadcasted = np.broadcast_to(costs, y.shape)
+    # Create a masked array, removing all non-true labels from cost matrix
+    masked = np.ma.masked_where(~y, broadcasted)
+
+    # select the ground truth with the lowest cost
+    y_single = masked.argmin(axis=1).reshape(-1,1)
+
+    return y_single
+    
+
+def get_first_true_label_position(
+    y_pred_proba: NDArray,
+    y: NDArray
+) -> NDArray:
+    """
+    Return the position of the first true label according to the sorted prediction.
+
+    Parameters
+    ----------
+    y_pred_proba: NDArray of shape (n_samples, n_classes)
+        Model prediction probabilities.
+
+    y: NDArray of shape (n_samples, n_classes)
+        Binary matrix of true labels.
+
+    Returns
+    -------
+    NDArray of shape (n_samples, 1)
+        Position of the first true label in the sorted prediction.
+    """
+    # Create a masked array, removing all non-true labels
+    masked = np.ma.masked_where(~y, y_pred_proba)
+
+    # select the ground truth with the highest predicted score
+    y_single = masked.argmax(axis=1)
+
+    return y_single
+
+def get_last_true_label_position(
+    y_pred_proba: NDArray,
+    y: NDArray
+) -> NDArray:
+    """
+    Return the position of the last true label according to the sorted prediction.
+
+    Parameters
+    ----------
+    y_pred_proba: NDArray of shape (n_samples, n_classes)
+        Model prediction probabilities.
+
+    y: NDArray of shape (n_samples, n_classes)
+        Binary matrix of true labels.
+
+    Returns
+    -------
+    NDArray of shape (n_samples, 1)
+        Position of the last true label in the sorted prediction.
+    """
+        # Create a masked array, removing all non-true labels
+    masked = np.ma.masked_where(~y, y_pred_proba)
+
+    # select the ground truth with the lowest predicted score
+    y_single = masked.argmin(axis=1)
+
+    return y_single
 
 def get_true_label_position(
     y_pred_proba: NDArray,

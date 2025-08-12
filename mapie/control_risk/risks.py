@@ -121,6 +121,80 @@ def compute_risk_precision(
 
     return risks
 
+def compute_all_coverage_risk(
+        lambdas: NDArray,
+        y_pred_proba: NDArray,
+        y: NDArray,
+) -> NDArray:
+    """
+    Computes a hierarchical coverage risk.
+    """
+    if y_pred_proba.ndim != 3:
+        raise ValueError(
+            f"y_pred_proba should be a 3D array, got shape {y_pred_proba.shape} instead."
+        )
+    if y.ndim != 2:
+        raise ValueError(
+            f"y should be a 2D array, got shape {y.shape} instead."
+        )
+    if not np.array_equal(y_pred_proba.shape[:-1], y.shape):
+        raise ValueError("y and y_pred_proba could not be broadcast.")
+
+    lambdas = cast(NDArray, column_or_1d(lambdas))
+    n_lambdas = len(lambdas)
+
+    # Repeat probabilities across thresholds
+    y_pred_proba_repeat = np.repeat(y_pred_proba, n_lambdas, axis=2)
+    y_pred_th = (y_pred_proba_repeat > lambdas).astype(int)  # Threshold predictions
+
+    # Repeat ground truth across thresholds
+    y_repeat = np.repeat(y[..., np.newaxis], n_lambdas, axis=2)
+
+    # Compute whether there is at least one correct prediction per sample
+    correct_predictions = np.all((y_pred_th & y_repeat), axis=1)  # (n_samples, n_lambdas)
+
+    # Compute loss: 1 if no correct labels, 0 otherwise
+    risks = 1 - (correct_predictions.astype(int) / y_pred_th.sum(axis=1))
+
+    return risks
+
+
+def compute_any_coverage_risk(
+        lambdas: NDArray,
+        y_pred_proba: NDArray,
+        y: NDArray,
+) -> NDArray:
+    """
+    Computes a hierarchical coverage risk.
+    """
+    if y_pred_proba.ndim != 3:
+        raise ValueError(
+            f"y_pred_proba should be a 3D array, got shape {y_pred_proba.shape} instead."
+        )
+    if y.ndim != 2:
+        raise ValueError(
+            f"y should be a 2D array, got shape {y.shape} instead."
+        )
+    if not np.array_equal(y_pred_proba.shape[:-1], y.shape):
+        raise ValueError("y and y_pred_proba could not be broadcast.")
+
+    lambdas = cast(NDArray, column_or_1d(lambdas))
+    n_lambdas = len(lambdas)
+
+    # Repeat probabilities across thresholds
+    y_pred_proba_repeat = np.repeat(y_pred_proba, n_lambdas, axis=2)
+    y_pred_th = (y_pred_proba_repeat > lambdas).astype(int)  # Threshold predictions
+
+    # Repeat ground truth across thresholds
+    y_repeat = np.repeat(y[..., np.newaxis], n_lambdas, axis=2)
+
+    # Compute whether there is at least one correct prediction per sample
+    correct_predictions = np.any((y_pred_th & y_repeat), axis=1)  # (n_samples, n_lambdas)
+
+    # Compute loss: 1 if no correct labels, 0 otherwise
+    risks = 1 - correct_predictions.astype(int)
+
+    return risks
 
 def _true_positive(
     y_pred_th: NDArray,

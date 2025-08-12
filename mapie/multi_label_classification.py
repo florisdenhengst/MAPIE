@@ -17,7 +17,7 @@ from sklearn.utils.validation import (_check_y, _num_samples, check_is_fitted,
 from ._typing import ArrayLike, NDArray
 from .control_risk.crc_rcps import find_lambda_star, get_r_hat_plus
 from .control_risk.ltt import find_lambda_control_star, ltt_procedure
-from .control_risk.risks import compute_risk_precision, compute_risk_recall
+from .control_risk.risks import compute_risk_precision, compute_risk_recall, compute_any_coverage_risk, compute_all_coverage_risk
 from .utils import check_alpha, check_n_jobs, check_verbose
 
 
@@ -144,7 +144,9 @@ class MapieMultiLabelClassifier(BaseEstimator, ClassifierMixin):
     """
     valid_methods_by_metric_ = {
         "precision": ["ltt"],
-        "recall": ["rcps", "crc"]
+        "recall": ["rcps", "crc"],
+        "any_label": ["crc"],
+        "all_label": ["crc"],
     }
     valid_methods = list(chain(*valid_methods_by_metric_.values()))
     valid_metric_ = list(valid_methods_by_metric_.keys())
@@ -445,6 +447,8 @@ class MapieMultiLabelClassifier(BaseEstimator, ClassifierMixin):
         if self.method is None:
             if self.metric_control == "recall":
                 self.method = "crc"
+            elif self.metric_control == "any_label":
+                self.method = "crc"
             else:  # self.metric_control == "precision"
                 self.method = "ltt"
 
@@ -526,7 +530,7 @@ class MapieMultiLabelClassifier(BaseEstimator, ClassifierMixin):
         self._check_all_labelled(y)
         self.n_samples_ = _num_samples(X)
 
-        # Work
+        # Workf
         if first_call or _refit:
             self.single_estimator_ = estimator
             y_pred_proba = self.single_estimator_.predict_proba(X)
@@ -535,6 +539,16 @@ class MapieMultiLabelClassifier(BaseEstimator, ClassifierMixin):
 
             if self.metric_control == "recall":
                 self.risks = compute_risk_recall(
+                    self.lambdas, y_pred_proba_array, y
+                )
+            elif self.metric_control == "any_label":
+                print("compute_any_coverage_risks")
+                self.risks = compute_any_coverage_risk(
+                    self.lambdas, y_pred_proba_array, y
+                )
+            elif self.metric_control == "all_label":
+                print("compute_all_coverage_risks")
+                self.risks = compute_all_coverage_risk(
                     self.lambdas, y_pred_proba_array, y
                 )
             else:  # self.metric_control == "precision"
@@ -550,6 +564,20 @@ class MapieMultiLabelClassifier(BaseEstimator, ClassifierMixin):
             y_pred_proba_array = self._transform_pred_proba(y_pred_proba)
             if self.metric_control == "recall":
                 partial_risk = compute_risk_recall(
+                    self.lambdas,
+                    y_pred_proba_array,
+                    y
+                )
+            elif self.metric_control == "any_label":
+                print("compute_coverage_risks_ctd")
+                partial_risk = compute_any_coverage_risk(
+                    self.lambdas,
+                    y_pred_proba_array,
+                    y
+                )
+            elif self.metric_control == "all_label":
+                print("compute_all_coverage_risks_ctd")
+                partial_risk = compute_all_coverage_risk(
                     self.lambdas,
                     y_pred_proba_array,
                     y
